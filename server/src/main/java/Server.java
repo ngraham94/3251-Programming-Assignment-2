@@ -1,4 +1,4 @@
-import cs3251.ReldatSock;
+import network.ReldatSocket;
 
 import java.io.IOException;
 
@@ -17,7 +17,7 @@ public class Server {
         }
 
         try {
-            ReldatSock sock = new ReldatSock(port, windowSize);
+            ReldatSocket sock = new ReldatSocket(port, windowSize);
             System.out.println(sock);
         } catch (IOException e) {
             System.err.println(e);
