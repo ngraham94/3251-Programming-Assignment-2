@@ -1,0 +1,18 @@
+subprojects {
+    apply plugin: 'java'
+}
+
+project(':lib') {
+}
+
+project(':client') {
+    dependencies {
+        compile project(':lib')
+    }
+}
+
+project(':server') {
+    dependencies {
+        compile project(':lib')
+    }
+}
