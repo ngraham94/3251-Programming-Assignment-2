@@ -2,14 +2,14 @@ package network;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.util.function.Consumer;
 
-public class ReldatSocket {
-    // Max segment size in bytes
+public class ReldatSocket extends DatagramSocket {
+    /** The maximum segment size in bytes */
     public static int MSS = 1000;
 
-    private DatagramSocket sock;
-
-    private int port, windowSize;
+    /** The window size in bytes */
+    private int windowSize;
 
     /**
      * Constructor for a listening ReldatSocket.
@@ -19,9 +19,8 @@ public class ReldatSocket {
      * @throws IOException
      */
     public ReldatSocket(int port, int windowSize) throws IOException {
-        this.port = port;
+        super(port);
         this.windowSize = windowSize;
-        this.sock = new DatagramSocket(port);
     }
 
     /**
@@ -31,7 +30,21 @@ public class ReldatSocket {
      * @throws IOException
      */
     public ReldatSocket(int windowSize) throws IOException {
+        super();
         this.windowSize = windowSize;
-        this.sock = new DatagramSocket();
+    }
+
+    /**
+     * Set callback for when new connection is opened.
+     */
+    public void acceptConnection(Consumer<ReldatConnection> consumer) {
+        // TODO: implement this
+    }
+
+    /**
+     * Connects and sets callback for new connection.
+     */
+    public void connect(Consumer<ReldatConnection> consumer) {
+        // TODO: implement this
     }
 }

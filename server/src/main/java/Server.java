@@ -16,12 +16,15 @@ public class Server {
             System.exit(1);
         }
 
+        // Create a new socket and listen on the port
+        ReldatSocket sock = null;
         try {
-            ReldatSocket sock = new ReldatSocket(port, windowSize);
-            System.out.println(sock);
+            sock = new ReldatSocket(port, windowSize);
         } catch (IOException e) {
             System.err.println(e);
             System.exit(1);
         }
+
+        System.out.printf("Server listening on %s\n", sock.getLocalSocketAddress());
     }
 }
