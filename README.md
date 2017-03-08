@@ -2,7 +2,7 @@
 
 ## Building
 
-    ./gradlew jar
+    ./gradlew build
     
 ## Running
 
