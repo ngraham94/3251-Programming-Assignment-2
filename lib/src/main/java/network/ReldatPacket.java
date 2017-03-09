@@ -6,9 +6,11 @@ public class ReldatPacket {
     /** Flags */
     private boolean SYN, ACK, FIN;
 
-    /** The size of the packet payload in bytes */
-    private short size;
+    private short size, windowSize;
 
-    /** The checksum to check for corrupted packets */
     private MessageDigest checksum;
+
+    private int seqNum, ackNum;
+
+    private int sourcePort, destPort;
 }
