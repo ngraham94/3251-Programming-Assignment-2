@@ -1,5 +1,6 @@
 package network;
 import java.net.*;
+import java.util.Scanner;
 
 
 /**
@@ -7,18 +8,21 @@ import java.net.*;
  */
 public class smsserverUDP {
     public static void main(String[] args) throws Exception {
-        if (args.length < 2 || args.length >=3) {
-            System.out.println("Invalid number of arguments. Accepted arguments in order are\nAddress\nPort\nMessage File");
+        if (args.length < 2 || args.length >=3) {                                                                       //Too few Arguments
+            System.out.println("Invalid number of arguments. Accepted arguments in order are\nPort\nMax Window Size");
             return;
         }
-        int portnum = Integer.parseInt(args[0]); //Parse the user supplied port number
-        String spamWordsFile = args[1]; //args[1] is the filename of the spam words
-        CommonMethods common = new CommonMethods();
-        int flag = common.readWordFile(spamWordsFile);//Read the user supplied text file of spam words
-        if (flag != 1) {//The file was not read successfully or was not found.
-            return;
-        }
-        String textMessage = "";
+
+        //-----------------------------------Initialize variables-------------------------------------------------------
+        boolean received = false;                                                                                       //boolean for successful receipt of connection request
+        int tries = 0;                                                                                                  //variable for number of attempts to establish connection
+        CommonMethods common = new CommonMethods();                                                                     //Contains methods shared between client and server
+        boolean connected = false;                                                                                      //Boolean stating if connection was established
+        byte[] incomingBuffer = new byte[Integer.parseInt(args[1])];                                                    //Buffer for incoming message at max  window size
+        byte[] outgoingBuffer;                                                                                          //Buffer for outgoing message
+        int portnum = Integer.parseInt(args[0]);                                                                        //Parse the user supplied port number
+        //--------------------------------------------------------------------------------------------------------------
+        // Begin listening on specified port
         DatagramSocket socket;
         try {//-------Try to bind to the supplied port. If in use, return
             socket = new DatagramSocket(portnum);
@@ -26,25 +30,24 @@ public class smsserverUDP {
             System.out.println("Specified port number is already in use. Terminating program");
             return;
         }
-        byte[] buffer = new byte[2000];//-------Buffer to be used by incoming packet
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+        DatagramPacket packet = new DatagramPacket(incomingBuffer, incomingBuffer.length);
         while(true) {
-            //<-----------------------Begin Connection Block 1----------------------->
-            socket.receive(packet);//--------Receive the packet from the client
-            //<-----------------------End Connection Block 1----------------------->
-            textMessage = new String(packet.getData(),0, packet.getLength());
-            textMessage += "\n";
-            String reply = common.processMessage(textMessage);
-            buffer = reply.getBytes();
-            System.out.println("Response: " + reply);
-            //<-----------------------Begin Connection Block 2----------------------->
-            InetAddress outAddress = packet.getAddress();//-------Get address of client
-            int outPort = packet.getPort();//-------get port of client
-            packet = new DatagramPacket(buffer, buffer.length, outAddress, outPort);
-            socket.send(packet);//-------Send the response
-            buffer = new byte[2000];
-            packet = new DatagramPacket(buffer, buffer.length);//-------Clear the buffer for another client request
-            //<-----------------------End Connection Block 2----------------------->
+            //<-----------------------Listen for connection request-----------------------------------------------------
+
+            socket.receive(packet);                                                                                     //--------Receive the packet from the client
+
+            //--------------------------------Begin block for connection establishment----------------------------------
+
+
+            //----------------------------------------------------------------------------------------------------------
+            //-------------------------------Text Transform Communication Block-----------------------------------------
+
+
+            //----------------------------------------------------------------------------------------------------------
+            //--------------------------------Close connection block----------------------------------------------------
+
+
+            //----------------------------------------------------------------------------------------------------------
         }
     }
 }
