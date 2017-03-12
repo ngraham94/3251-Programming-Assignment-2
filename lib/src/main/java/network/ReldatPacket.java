@@ -11,19 +11,62 @@ public class ReldatPacket implements Serializable {
     private MessageDigest checksum;
     private int seqNum, ackNum;
 
-    private byte[] data;
+    // Initialize to empty array to getHeaderSize
+    // This has the unfortunate side effect of making the header bigger
+    // for header-only packets, but whatever...
+    private byte[] data = {};
 
-    public ReldatPacket(byte[] data, int windowSize, int seqNum) {
-        this.data = data;
-        this.size = (short) data.length;
+
+    /**
+     * Constructor for packet without data (header-only packet)
+     */
+    public ReldatPacket(int windowSize, int seqNum) {
         this.windowSize = (short) windowSize;
-        this.seqNum = seqNum;
+        this.seqNum = (short) seqNum;
     }
 
-    public ReldatPacket(byte[] data, int windowSize, int seqNum, int ackNum) {
-        this(data, windowSize, seqNum);
+    public ReldatPacket(byte[] data, int windowSize, int seqNum) {
+        this(windowSize, seqNum);
+        this.data = data;
+        this.size = (short) data.length;
+    }
+
+    /**
+     * Calculates the size of the header.
+     * @return the size of the header in bytes or -1 if an error occurs
+     */
+    public static int getHeaderSize() {
+        try {
+            return new ReldatPacket(0, 0).getBytes().length;
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    public void calcChecksum() {
+        // TODO
+    }
+
+    public boolean verifyChecksum() {
+        // TODO
+        return false;
+    }
+
+    public void setFIN() {
+        this.FIN = true;
+    }
+
+    public void setSYN() {
+        this.SYN = true;
+    }
+
+    public void setACK(int ackNum) {
         this.ACK = true;
         this.ackNum = ackNum;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
     }
 
     public byte[] getData() {

@@ -7,17 +7,39 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ReldatPacketTest {
-    @Test
-    void testSerialization() throws Exception {
+    ReldatPacket genPacket(int dataSize) {
         // Generate random data
         Random r = new Random();
-        byte[] data = new byte[500];
+        byte[] data = new byte[dataSize];
         r.nextBytes(data);
         int windowSize = r.nextInt();
         int seqNum = r.nextInt();
-        int ackNum = r.nextInt();
 
-        ReldatPacket packet = new ReldatPacket(data, windowSize, seqNum, ackNum);
+        return new ReldatPacket(data, windowSize, seqNum);
+    }
+
+    @Test
+    void getHeaderSize() throws Exception {
+        int headerSize = ReldatPacket.getHeaderSize();
+
+        assertNotEquals(-1, headerSize);
+
+        // Test on empty packet
+        ReldatPacket noData = new ReldatPacket(50, 50);
+        assertEquals(headerSize, noData.getBytes().length);
+
+        // Packet size = 500 bytes
+        ReldatPacket packet = genPacket(500);
+        assertEquals(headerSize + 500, packet.getBytes().length);
+
+        // Packet size = 1 byte
+        packet = genPacket(1);
+        assertEquals(headerSize + 1, packet.getBytes().length);
+    }
+
+    @Test
+    void testSerialization() throws Exception {
+        ReldatPacket packet = genPacket(500);
 
         byte[] serialized = packet.getBytes();
 
@@ -32,6 +54,6 @@ class ReldatPacketTest {
 
         // Check if the data is equal (the assertEquals above should already
         // handle this but adding this to be sure)
-        assertArrayEquals(data, deserialized.getData());
+        assertArrayEquals(packet.getData(), deserialized.getData());
     }
 }

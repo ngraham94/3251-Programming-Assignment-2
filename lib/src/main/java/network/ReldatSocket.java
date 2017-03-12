@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 
 public class ReldatSocket extends DatagramSocket {
     /** The maximum segment size in bytes */
-    public static int MSS = 1000;
+    public static final int MSS = 1000;
 
     /** The window size in bytes */
     private int windowSize;
