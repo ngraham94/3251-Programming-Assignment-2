@@ -25,6 +25,7 @@ public class Server {
             System.exit(1);
         }
 
+        System.out.printf("Window size set to %d\n", windowSize);
         System.out.printf("Server listening on %s\n", sock.getLocalSocketAddress());
     }
 }

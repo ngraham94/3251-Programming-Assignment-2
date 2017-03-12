@@ -65,6 +65,10 @@ public class ReldatPacket implements Serializable {
         this.ackNum = ackNum;
     }
 
+    public int getSeqNum() {
+        return seqNum;
+    }
+
     public void setData(byte[] data) {
         this.data = data;
     }
