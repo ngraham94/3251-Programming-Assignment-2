@@ -73,7 +73,7 @@ start with a header specifying the size of the message.
 ![Client FSM](img/client-fsm.png)
 
 #### Server
-![Server FSM](img/client-fsm.png)
+![Server FSM](img/server-fsm.png)
 
     
 ## Files
