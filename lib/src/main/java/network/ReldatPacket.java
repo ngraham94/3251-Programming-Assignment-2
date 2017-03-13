@@ -7,7 +7,7 @@ import java.util.Objects;
 public class ReldatPacket implements Serializable {
     /** Packet headers */
     private boolean SYN, ACK, FIN;
-    private short size, windowSize;
+    private int size, windowSize;
     private MessageDigest checksum;
     private int seqNum, ackNum;
 
@@ -21,14 +21,14 @@ public class ReldatPacket implements Serializable {
      * Constructor for packet without data (header-only packet)
      */
     public ReldatPacket(int windowSize, int seqNum) {
-        this.windowSize = (short) windowSize;
-        this.seqNum = (short) seqNum;
+        this.windowSize = windowSize;
+        this.seqNum = seqNum;
     }
 
     public ReldatPacket(byte[] data, int windowSize, int seqNum) {
         this(windowSize, seqNum);
         this.data = data;
-        this.size = (short) data.length;
+        this.size = data.length;
     }
 
     /**
@@ -43,8 +43,9 @@ public class ReldatPacket implements Serializable {
         }
     }
 
-    public void calcChecksum() {
+    public MessageDigest calcChecksum() {
         // TODO
+        return null;
     }
 
     public boolean verifyChecksum() {
@@ -60,9 +61,21 @@ public class ReldatPacket implements Serializable {
         this.SYN = true;
     }
 
+    public boolean getSYN() {
+        return SYN;
+    }
+
     public void setACK(int ackNum) {
         this.ACK = true;
         this.ackNum = ackNum;
+    }
+
+    public boolean getACK() {
+        return ACK;
+    }
+
+    public int getAckNum() {
+        return ackNum;
     }
 
     public int getSeqNum() {

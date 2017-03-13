@@ -1,12 +1,11 @@
 package network;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketAddress;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
+import java.util.Random;
 
 public class ReldatSocket extends DatagramSocket {
     /** The maximum segment size in bytes */
@@ -15,13 +14,18 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Timeout in ms
      */
-    public static final int TIMEOUT = 5000;
+    public static final int TIMEOUT = 10000;
 
     /** The window size in bytes */
     private final int windowSize;
 
-    /** Set of all connections */
-    private Map<SocketAddress, ReldatConnection> connections;
+    /**
+     * The current sequence number.
+     * The next packet sent will be sent with this value.
+     */
+    private int seqNum;
+
+    private boolean isConnected;
 
     /**
      * Constructor for a listening ReldatSocket.
@@ -33,7 +37,9 @@ public class ReldatSocket extends DatagramSocket {
     public ReldatSocket(int port, int windowSize) throws IOException {
         super(port);
         this.windowSize = windowSize;
-        this.connections = new ConcurrentHashMap<>();
+
+        // Initialize random positive seq num
+        this.seqNum = new Random().nextInt() & Integer.MAX_VALUE;
     }
 
     /**
@@ -47,28 +53,45 @@ public class ReldatSocket extends DatagramSocket {
     }
 
     /**
-     * Set callback for when new connection is accepted.
+     * Blocks until a new connection is accepted
      *
-     * @param callback
+     * @return a new socket for the newly accepted connection
      */
-    public void acceptConnection(Consumer<ReldatConnection> callback) {
-        // TODO: implement this
+    public ReldatSocket accept() throws IOException {
+        // Receive a SYN packet
+        ReldatPacket syn = receive();
+
+        // Create new socket for the new connection
+        ReldatSocket conn = new ReldatSocket(windowSize);
+
+        // TODO: Implement the rest
+        return conn;
     }
 
     /**
-     * Connects to destination address:port and sets callback for new connection.
+     * Connects to destination address:port
      *
-     * @param address
-     * @param callback
+     * This operation blocks until the connection is established.
+     *
+     * @param address the address to connect to
      */
-    public void connect(SocketAddress address, Consumer<ReldatConnection> callback) {
-        ReldatConnection conn = new ReldatConnection(address, windowSize);
-        this.connections.put(address, conn);
+    public void connect(SocketAddress address) throws ConnectException {
+        ReldatPacket syn = new ReldatPacket(windowSize, seqNum);
+        syn.setSYN();
 
-        // TODO: implement three way handshake
-        conn.synchronize();
+        try {
+            send(syn, address);
+            // TODO: receive SYNACK and send ACK
 
-        callback.accept(conn);
+            // TODO: set isConnected to true
+        } catch (IOException e) {
+            throw new ConnectException(e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean isConnected() {
+        return isConnected;
     }
 
     /**
