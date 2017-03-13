@@ -21,7 +21,7 @@ public class Server {
         try {
             sock = new ReldatSocket(port, windowSize);
         } catch (IOException e) {
-            System.err.println(e);
+            System.err.println(e.getMessage());
             System.exit(1);
         }
 

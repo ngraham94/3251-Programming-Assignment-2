@@ -1,6 +1,8 @@
 package network;
 
 import java.io.*;
+import java.net.DatagramPacket;
+import java.net.SocketAddress;
 import java.security.MessageDigest;
 import java.util.Objects;
 
@@ -10,6 +12,13 @@ public class ReldatPacket implements Serializable {
     private int size, windowSize;
     private MessageDigest checksum;
     private int seqNum, ackNum;
+
+
+    /**
+     * The SocketAddress the packet was sent from.
+     * This is not included in the header since it is a part of the UDP header.
+     */
+    private transient SocketAddress from;
 
     // Initialize to empty array to getHeaderSize
     // This has the unfortunate side effect of making the header bigger
@@ -90,6 +99,15 @@ public class ReldatPacket implements Serializable {
         return data;
     }
 
+    /**
+     * Get the SocketAddress the packet was sent from.
+     *
+     * @return the SocketAddress of the sender.
+     */
+    public SocketAddress getSocketAddress() {
+        return from;
+    }
+
     public byte[] getBytes() throws IOException {
         try (ByteArrayOutputStream bStream = new ByteArrayOutputStream();
              ObjectOutputStream oStream = new ObjectOutputStream(bStream)) {
@@ -100,11 +118,25 @@ public class ReldatPacket implements Serializable {
         }
     }
 
-    public static ReldatPacket fromBytes(byte[] bytes) throws IOException, ClassNotFoundException {
+    public static ReldatPacket fromBytes(byte[] bytes) throws IOException {
         try (ByteArrayInputStream bStream = new ByteArrayInputStream(bytes);
-            ObjectInputStream oStream = new ObjectInputStream(bStream)) {
+             ObjectInputStream oStream = new ObjectInputStream(bStream)) {
             return (ReldatPacket) oStream.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new IOException(e.getMessage());
         }
+    }
+
+    /**
+     * Factory method for a ReldatPacket from an UDP datagram.
+     *
+     * @param datagram the UDP packet
+     * @return the new ReldatPacket
+     */
+    public static ReldatPacket fromUDP(DatagramPacket datagram) throws IOException {
+        ReldatPacket packet = fromBytes(datagram.getData());
+        packet.from = datagram.getSocketAddress();
+        return packet;
     }
 
     @Override

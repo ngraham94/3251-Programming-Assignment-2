@@ -23,7 +23,7 @@ public class Client {
             sock = new ReldatSocket(windowSize);
             sock.connect(address);
         } catch (Exception e) {
-            System.err.println(e);
+            System.err.println(e.getMessage());
             System.exit(1);
         }
     }

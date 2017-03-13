@@ -28,10 +28,10 @@ public class ReldatSocket extends DatagramSocket {
     private boolean isConnected;
 
     /**
-     * Constructor for a listening ReldatSocket.
+     * Construct a ReldatSocket bound on a specific port.
      *
-     * @param port
-     * @param windowSize
+     * @param port the port to bind on
+     * @param windowSize the receiving window size
      * @throws IOException
      */
     public ReldatSocket(int port, int windowSize) throws IOException {
@@ -43,9 +43,9 @@ public class ReldatSocket extends DatagramSocket {
     }
 
     /**
-     * Construct a ReldatSocket without a listening port
+     * Construct a ReldatSocket bound on a random port.
      *
-     * @param windowSize
+     * @param windowSize the receiving window size
      * @throws IOException
      */
     public ReldatSocket(int windowSize) throws IOException {
@@ -59,12 +59,23 @@ public class ReldatSocket extends DatagramSocket {
      */
     public ReldatSocket accept() throws IOException {
         // Receive a SYN packet
+        // TODO: verify packet integrity
         ReldatPacket syn = receive();
-
+        while (!syn.getSYN()) {
+            syn = receive();
+        }
         // Create new socket for the new connection
         ReldatSocket conn = new ReldatSocket(windowSize);
 
-        // TODO: Implement the rest
+        // Send SYNACK
+        ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum);
+        synack.setSYN();
+        synack.setACK(syn.getAckNum() + 1);
+        conn.send(synack, syn.getSocketAddress());
+
+        // TODO: wait for ACK
+
+        conn.isConnected = true;
         return conn;
     }
 
@@ -81,7 +92,15 @@ public class ReldatSocket extends DatagramSocket {
 
         try {
             send(syn, address);
-            // TODO: receive SYNACK and send ACK
+
+            ReldatPacket synack = receive();
+            // TODO: verify packet integrity
+            while (!synack.getSYN() || !synack.getACK()) {
+                synack = receive();
+            }
+
+            System.out.println(synack.getSocketAddress());
+            // TODO: send ACK
 
             // TODO: set isConnected to true
         } catch (IOException e) {
@@ -109,8 +128,8 @@ public class ReldatSocket extends DatagramSocket {
 
         try {
             receive(udpPacket);
-            return ReldatPacket.fromBytes(udpPacket.getData());
-        } catch (Exception e) {
+            return ReldatPacket.fromUDP(udpPacket);
+        } catch (IOException e) {
             return null;
         }
     }
