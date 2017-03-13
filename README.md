@@ -25,8 +25,11 @@ Server:
 ### Header
 Size in bits
 
-SYN (1) | ACK (1) | FIN (1)
-------- | ------- | -------
+SYN (1)        | ACK (1)          | FIN (1)
+-------------- | ---------------- | ----------------
+DATA_SIZE (32) | ---------------- | WINDOW_SIZE (32)
+SEQ_NUM (32)   | ACK_NUM (32)     | CHECKSUM (64)
+
 
 ### Connection Opening / Termination
 Opening: 3-way handshake similar to TCP (SYN, SYNACK, ACK)
