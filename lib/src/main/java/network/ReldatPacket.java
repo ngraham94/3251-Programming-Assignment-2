@@ -3,15 +3,18 @@ package network;
 import java.io.*;
 import java.net.DatagramPacket;
 import java.net.SocketAddress;
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Objects;
 
 public class ReldatPacket implements Serializable {
     /** Packet headers */
     private boolean SYN, ACK, FIN;
     private int size, windowSize;
-    private MessageDigest checksum;
     private int seqNum, ackNum;
+    private byte[] checksum;
 
 
     /**
@@ -32,12 +35,14 @@ public class ReldatPacket implements Serializable {
     public ReldatPacket(int windowSize, int seqNum) {
         this.windowSize = windowSize;
         this.seqNum = seqNum;
+        this.checksum = calcChecksum();
     }
 
     public ReldatPacket(byte[] data, int windowSize, int seqNum) {
         this(windowSize, seqNum);
         this.data = data;
         this.size = data.length;
+        this.checksum = calcChecksum();
     }
 
     /**
@@ -52,22 +57,41 @@ public class ReldatPacket implements Serializable {
         }
     }
 
-    public MessageDigest calcChecksum() {
-        // TODO
-        return null;
+    private byte[] calcChecksum() {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+
+            // Buffer for headers
+            ByteBuffer buffer = ByteBuffer.allocate(50);
+            buffer.putInt(SYN ? 1 : 0);
+            buffer.putInt(ACK ? 1 : 0);
+            buffer.putInt(FIN ? 1 : 0);
+            buffer.putInt(size);
+            buffer.putInt(windowSize);
+            buffer.putInt(seqNum);
+            buffer.putInt(ackNum);
+
+            // Update and digest!
+            md.update(buffer.array());
+            return md.digest(data);
+        } catch (NoSuchAlgorithmException e) {
+            // Should never happen since the algorithm is hardcoded
+            return null;
+        }
     }
 
     public boolean verifyChecksum() {
-        // TODO
-        return false;
+        return Arrays.equals(checksum, calcChecksum());
     }
 
     public void setFIN() {
         this.FIN = true;
+        checksum = calcChecksum();
     }
 
     public void setSYN() {
         this.SYN = true;
+        checksum = calcChecksum();
     }
 
     public boolean getSYN() {
@@ -77,6 +101,7 @@ public class ReldatPacket implements Serializable {
     public void setACK(int ackNum) {
         this.ACK = true;
         this.ackNum = ackNum;
+        checksum = calcChecksum();
     }
 
     public boolean getACK() {
@@ -93,6 +118,8 @@ public class ReldatPacket implements Serializable {
 
     public void setData(byte[] data) {
         this.data = data;
+        this.size = data.length;
+        this.checksum = calcChecksum();
     }
 
     public byte[] getData() {
@@ -151,7 +178,7 @@ public class ReldatPacket implements Serializable {
                 && FIN == p2.FIN
                 && size == p2.size
                 && windowSize == p2.windowSize
-                && Objects.equals(checksum, p2.checksum)
+                && Arrays.equals(checksum, p2.checksum)
                 && seqNum == p2.seqNum
                 && ackNum == p2.ackNum
                 && Objects.deepEquals(data, p2.data);
