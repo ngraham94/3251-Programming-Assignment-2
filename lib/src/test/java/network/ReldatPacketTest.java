@@ -2,13 +2,14 @@ package network;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ReldatPacketTest {
-    private ReldatPacket genPacket(int dataSize) {
+    private ReldatPacket genPacket(int dataSize, boolean randomizeFlags) {
         // Generate random data
         Random r = new Random();
         byte[] data = new byte[dataSize];
@@ -16,7 +17,15 @@ class ReldatPacketTest {
         int windowSize = r.nextInt();
         int seqNum = r.nextInt();
 
-        return new ReldatPacket(data, windowSize, seqNum);
+        ReldatPacket packet = new ReldatPacket(data, windowSize, seqNum);
+
+        if (randomizeFlags) {
+            if (r.nextBoolean()) packet.setSYN();
+            if (r.nextBoolean()) packet.setACK(r.nextInt());
+            if (r.nextBoolean()) packet.setFIN();
+        }
+
+        return packet;
     }
 
     @Test
@@ -30,17 +39,20 @@ class ReldatPacketTest {
         assertEquals(headerSize, noData.getBytes().length);
 
         // Packet size = 500 bytes
-        ReldatPacket packet = genPacket(500);
+        ReldatPacket packet = genPacket(500, true);
         assertEquals(headerSize + 500, packet.getBytes().length);
 
         // Packet size = 1 byte
-        packet = genPacket(1);
+        packet = genPacket(1, true);
         assertEquals(headerSize + 1, packet.getBytes().length);
     }
 
     @Test
-    void testSerialization() throws Exception {
-        ReldatPacket packet = genPacket(500);
+    void testSerialization() throws IOException {
+        ReldatPacket empty = new ReldatPacket(0, 0);
+        assertEquals(empty, ReldatPacket.fromBytes(empty.getBytes()));
+
+        ReldatPacket packet = genPacket(500, true);
 
         byte[] serialized = packet.getBytes();
 
@@ -61,7 +73,7 @@ class ReldatPacketTest {
     @Test
     void testChecksum() {
         // Basic test
-        ReldatPacket packet = genPacket(750);
+        ReldatPacket packet = genPacket(750, false);
         assertTrue(packet.verifyChecksum());
 
         // Test update operations update checksum
@@ -82,7 +94,7 @@ class ReldatPacketTest {
         Random rand = new Random();
 
         // SYN
-        ReldatPacket packet = genPacket(750);
+        ReldatPacket packet = genPacket(750, false);
         assertTrue(packet.verifyChecksum());  // Sanity check
         Field field = ReldatPacket.class.getDeclaredField("SYN");
         field.setAccessible(true);
@@ -90,7 +102,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // ACK
-        packet = genPacket(750);
+        packet = genPacket(750, false);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("ACK");
         field.setAccessible(true);
@@ -98,7 +110,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // FIN
-        packet = genPacket(750);
+        packet = genPacket(750, false);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("FIN");
         field.setAccessible(true);
@@ -106,7 +118,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // size
-        packet = genPacket(750);
+        packet = genPacket(750, true);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("size");
         field.setAccessible(true);
@@ -114,7 +126,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // windowSize
-        packet = genPacket(750);
+        packet = genPacket(750, true);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("windowSize");
         field.setAccessible(true);
@@ -122,7 +134,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // seqNum
-        packet = genPacket(750);
+        packet = genPacket(750, true);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("seqNum");
         field.setAccessible(true);
@@ -130,7 +142,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // ackNum
-        packet = genPacket(750);
+        packet = genPacket(750, true);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("ackNum");
         field.setAccessible(true);
@@ -138,7 +150,7 @@ class ReldatPacketTest {
         assertFalse(packet.verifyChecksum());
 
         // data
-        packet = genPacket(750);
+        packet = genPacket(750, true);
         assertTrue(packet.verifyChecksum());  // Sanity check
         field = ReldatPacket.class.getDeclaredField("data");
         field.setAccessible(true);

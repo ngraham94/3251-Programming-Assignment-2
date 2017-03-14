@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.Objects;
 
 public class ReldatPacket implements Serializable {
     /** Packet headers */
@@ -15,7 +14,6 @@ public class ReldatPacket implements Serializable {
     private int size, windowSize;
     private int seqNum, ackNum;
     private byte[] checksum;
-
 
     /**
      * The SocketAddress the packet was sent from.
@@ -26,7 +24,7 @@ public class ReldatPacket implements Serializable {
     // Initialize to empty array to getHeaderSize
     // This has the unfortunate side effect of making the header bigger
     // for header-only packets, but whatever...
-    private byte[] data = {};
+    private byte[] data;
 
 
     /**
@@ -73,7 +71,8 @@ public class ReldatPacket implements Serializable {
 
             // Update and digest!
             md.update(buffer.array());
-            return md.digest(data);
+            if (data != null) md.update(data);
+            return md.digest();
         } catch (NoSuchAlgorithmException e) {
             // Should never happen since the algorithm is hardcoded
             return null;
@@ -136,21 +135,63 @@ public class ReldatPacket implements Serializable {
     }
 
     public byte[] getBytes() throws IOException {
-        try (ByteArrayOutputStream bStream = new ByteArrayOutputStream();
-             ObjectOutputStream oStream = new ObjectOutputStream(bStream)) {
+        try (ByteArrayOutputStream bstream = new ByteArrayOutputStream();
+             DataOutputStream stream = new DataOutputStream(bstream)) {
 
-            oStream.writeObject(this);
-            oStream.flush();
-            return bStream.toByteArray();
+            stream.writeBoolean(SYN);
+            stream.writeBoolean(ACK);
+            stream.writeBoolean(FIN);
+            stream.writeInt(size);
+            stream.writeInt(windowSize);
+            stream.writeInt(seqNum);
+            stream.writeInt(ackNum);
+            stream.write(checksum);
+            if (data != null) stream.write(data);
+
+            stream.flush();
+            return bstream.toByteArray();
         }
     }
 
+    /**
+     * Deserialize a bytes array into a ReldatPacket.
+     *
+     * @param bytes the array of bytes to deserialize
+     * @return the packet
+     * @throws IOException when deserialization fails due to corrupt data
+     */
     public static ReldatPacket fromBytes(byte[] bytes) throws IOException {
-        try (ByteArrayInputStream bStream = new ByteArrayInputStream(bytes);
-             ObjectInputStream oStream = new ObjectInputStream(bStream)) {
-            return (ReldatPacket) oStream.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new IOException(e.getMessage());
+        try (ByteArrayInputStream bstream = new ByteArrayInputStream(bytes);
+             DataInputStream stream = new DataInputStream(bstream)) {
+
+            boolean SYN = stream.readBoolean();
+            boolean ACK = stream.readBoolean();
+            boolean FIN = stream.readBoolean();
+
+            int size = stream.readInt();
+            int windowSize = stream.readInt();
+            int seqNum = stream.readInt();
+            int ackNum = stream.readInt();
+
+            byte[] checksum = new byte[16];
+            stream.read(checksum);
+
+            ReldatPacket packet = new ReldatPacket(windowSize, seqNum);
+            packet.SYN = SYN;
+            packet.ACK = ACK;
+            packet.FIN = FIN;
+            packet.size = size;
+            packet.windowSize = windowSize;
+            packet.ackNum = ackNum;
+            packet.checksum = checksum;
+
+            if (size > 0) {
+                byte[] data = new byte[size];
+                stream.read(data);
+                packet.data = data;
+            }
+
+            return packet;
         }
     }
 
@@ -159,6 +200,7 @@ public class ReldatPacket implements Serializable {
      *
      * @param datagram the UDP packet
      * @return the new ReldatPacket
+     * @throws IOException when deserialization fails
      */
     public static ReldatPacket fromUDP(DatagramPacket datagram) throws IOException {
         ReldatPacket packet = fromBytes(datagram.getData());
@@ -181,6 +223,6 @@ public class ReldatPacket implements Serializable {
                 && Arrays.equals(checksum, p2.checksum)
                 && seqNum == p2.seqNum
                 && ackNum == p2.ackNum
-                && Objects.deepEquals(data, p2.data);
+                && Arrays.equals(data, p2.data);
     }
 }
