@@ -1,20 +1,17 @@
 package network;
 
 import java.io.IOException;
-import java.net.ConnectException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.SocketAddress;
+import java.net.*;
 import java.util.Random;
 
 public class ReldatSocket extends DatagramSocket {
     /** The maximum segment size in bytes */
-    public static final int MSS = 1000;
+    private static final int MSS = 1000;
 
     /**
      * Timeout in ms
      */
-    public static final int TIMEOUT = 10000;
+    private static final int TIMEOUT = 5000;
 
     /** The window size in bytes */
     private final int windowSize;
@@ -32,7 +29,7 @@ public class ReldatSocket extends DatagramSocket {
      *
      * @param port the port to bind on
      * @param windowSize the receiving window size
-     * @throws IOException
+     * @throws IOException exception inherited from parent DatagramSocket
      */
     public ReldatSocket(int port, int windowSize) throws IOException {
         super(port);
@@ -40,13 +37,19 @@ public class ReldatSocket extends DatagramSocket {
 
         // Initialize random positive seq num
         this.seqNum = new Random().nextInt() & Integer.MAX_VALUE;
+
+        // Set the timeout
+        this.setSoTimeout(TIMEOUT);
+
+        // Set receive buffer size
+        this.setReceiveBufferSize(windowSize*MSS);
     }
 
     /**
      * Construct a ReldatSocket bound on a random port.
      *
      * @param windowSize the receiving window size
-     * @throws IOException
+     * @throws IOException exception inherited from parent DatagramSocket
      */
     public ReldatSocket(int windowSize) throws IOException {
         this(0, windowSize);
@@ -56,14 +59,16 @@ public class ReldatSocket extends DatagramSocket {
      * Blocks until a new connection is accepted
      *
      * @return a new socket for the newly accepted connection
+     * @throws IOException error while receiving packet
      */
     public ReldatSocket accept() throws IOException {
-        // Receive a SYN packet
-        // TODO: verify packet integrity
-        ReldatPacket syn = receive();
-        while (!syn.getSYN()) {
+        // Blocks until receiving a SYN packet
+        ReldatPacket syn;
+        do {
+            System.out.println("Waiting for SYN");
             syn = receive();
-        }
+        } while (syn == null || !syn.getSYN());
+
         // Create new socket for the new connection
         ReldatSocket conn = new ReldatSocket(windowSize);
 
@@ -85,19 +90,20 @@ public class ReldatSocket extends DatagramSocket {
      * This operation blocks until the connection is established.
      *
      * @param address the address to connect to
+     * @throws ConnectException when connection fails
      */
     public void connect(SocketAddress address) throws ConnectException {
         ReldatPacket syn = new ReldatPacket(windowSize, seqNum);
         syn.setSYN();
 
         try {
-            send(syn, address);
-
-            ReldatPacket synack = receive();
-            // TODO: verify packet integrity
-            while (!synack.getSYN() || !synack.getACK()) {
+            // Send SYN and wait for SYNACK
+            ReldatPacket synack;
+            do {
+                System.out.println("SYN sent, waiting for synack...");
+                send(syn, address);
                 synack = receive();
-            }
+            } while (synack == null || !synack.getSYN() || !synack.getACK());
 
             System.out.println(synack.getSocketAddress());
             // TODO: send ACK
@@ -116,19 +122,23 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Receive a ReldatPacket through the socket.
      * <p>
-     * This should block until a packet is received.
-     * This is an internal/unreliable operation and does not check
-     * the packet for correctness (checksum, seqnum, etc).
+     * This should block until a packet with valid checksum is received
+     * or it times out. Receiving a packet that fails the checksum test resets
+     * the timeout.
      *
-     * @return null if an error occurs or get the packet.
+     * @return the packet or null if an error occurs (timeout, other IOException, etc)
      */
     private ReldatPacket receive() {
         byte[] buffer = new byte[MSS];
         DatagramPacket udpPacket = new DatagramPacket(buffer, MSS);
 
         try {
-            receive(udpPacket);
-            return ReldatPacket.fromUDP(udpPacket);
+            ReldatPacket packet;
+            do {
+                receive(udpPacket);
+                packet = ReldatPacket.fromUDP(udpPacket);
+            } while (packet == null || !packet.verifyChecksum());
+            return packet;
         } catch (IOException e) {
             return null;
         }
@@ -140,9 +150,8 @@ public class ReldatSocket extends DatagramSocket {
      * This is an internal/unreliable operation and does
      * not check for ACKS to verify it is received.
      *
-     * @param packet
-     * @param address
-     * @throws IOException
+     * @param packet the ReldatPacket to send
+     * @param address the SocketAddress to send it to
      */
     private void send(ReldatPacket packet, SocketAddress address) throws IOException {
         byte[] data = packet.getBytes();
