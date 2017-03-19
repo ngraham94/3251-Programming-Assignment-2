@@ -125,6 +125,10 @@ public class ReldatPacket implements Serializable {
         return data;
     }
 
+    public int getWindowSize() {
+        return windowSize;
+    }
+
     /**
      * Get the SocketAddress the packet was sent from.
      *

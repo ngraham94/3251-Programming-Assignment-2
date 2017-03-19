@@ -1,7 +1,10 @@
 package network;
 
 import java.io.IOException;
-import java.net.*;
+import java.net.ConnectException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.SocketAddress;
 import java.util.Random;
 
 public class ReldatSocket extends DatagramSocket {
@@ -11,10 +14,17 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Timeout in ms
      */
-    private static final int TIMEOUT = 5000;
+    private static final int TIMEOUT = 1000;
 
-    /** The window size in bytes */
+    /**
+     * The size of the receive window in bytes.
+     */
     private final int windowSize;
+
+    /**
+     * The size of the send window in bytes.
+     */
+    private int sendWindow;
 
     /**
      * The current sequence number.
@@ -22,7 +32,12 @@ public class ReldatSocket extends DatagramSocket {
      */
     private int seqNum;
 
+    /**
+     * The socket address this socket is connected to.
+     */
+    private SocketAddress remoteSocketAddress;
     private boolean isConnected;
+
 
     /**
      * Construct a ReldatSocket bound on a specific port.
@@ -37,9 +52,6 @@ public class ReldatSocket extends DatagramSocket {
 
         // Initialize random positive seq num
         this.seqNum = new Random().nextInt() & Integer.MAX_VALUE;
-
-        // Set the timeout
-        this.setSoTimeout(TIMEOUT);
 
         // Set receive buffer size
         this.setReceiveBufferSize(windowSize*MSS);
@@ -65,20 +77,24 @@ public class ReldatSocket extends DatagramSocket {
         // Blocks until receiving a SYN packet
         ReldatPacket syn;
         do {
-            System.out.println("Waiting for SYN");
-            syn = receive();
+            syn = receivePacket();
         } while (syn == null || !syn.getSYN());
 
         // Create new socket for the new connection
         ReldatSocket conn = new ReldatSocket(windowSize);
+        conn.remoteSocketAddress = syn.getSocketAddress();
 
         // Send SYNACK
         ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum);
         synack.setSYN();
-        synack.setACK(syn.getAckNum() + 1);
-        conn.send(synack, syn.getSocketAddress());
+        synack.setACK(syn.getSeqNum() + 1);
+        conn.sendPacket(synack, syn.getSocketAddress());
 
-        // TODO: wait for ACK
+        // Wait for ACK
+        ReldatPacket ack;
+        do {
+            ack = conn.receivePacket();
+        } while (ack == null || !ack.getACK());
 
         conn.isConnected = true;
         return conn;
@@ -93,22 +109,26 @@ public class ReldatSocket extends DatagramSocket {
      * @throws ConnectException when connection fails
      */
     public void connect(SocketAddress address) throws ConnectException {
-        ReldatPacket syn = new ReldatPacket(windowSize, seqNum);
+        ReldatPacket syn = new ReldatPacket(windowSize, seqNum++);
         syn.setSYN();
 
         try {
             // Send SYN and wait for SYNACK
             ReldatPacket synack;
             do {
-                System.out.println("SYN sent, waiting for synack...");
-                send(syn, address);
-                synack = receive();
-            } while (synack == null || !synack.getSYN() || !synack.getACK());
+                sendPacket(syn, address);
+                synack = receivePacket();
+            } while (synack == null || !synack.getSYN() || !synack.getACK() ||
+                    seqNum != synack.getAckNum());
 
-            System.out.println(synack.getSocketAddress());
-            // TODO: send ACK
+            // Get the address of the newly opened socket on the server
+            SocketAddress newAddress = synack.getSocketAddress();
 
-            // TODO: set isConnected to true
+            ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
+            ack.setACK(synack.getSeqNum() + 1);
+            sendPacket(ack, newAddress);
+
+            isConnected = true;
         } catch (IOException e) {
             throw new ConnectException(e.getMessage());
         }
@@ -119,25 +139,64 @@ public class ReldatSocket extends DatagramSocket {
         return isConnected;
     }
 
+    @Override
+    public SocketAddress getRemoteSocketAddress() {
+        return remoteSocketAddress;
+    }
+
+    /**
+     * Send data through the established connection to the
+     * remote SocketAddress
+     *
+     * @param data the data to send
+     */
+    public void send(byte[] data) {
+        // TODO: Implement this
+    }
+
+    /**
+     * Receive bytes from the connection
+     *
+     * @param length the length of the data to receive
+     * @return an array of bytes containing the received data
+     */
+    public byte[] receive(int length) {
+        // TODO: Implement this
+        return null;
+    }
+
+    private ReldatPacket receivePacket() {
+        return receivePacket(TIMEOUT);
+    }
+
     /**
      * Receive a ReldatPacket through the socket.
      * <p>
      * This should block until a packet with valid checksum is received
-     * or it times out. Receiving a packet that fails the checksum test resets
-     * the timeout.
+     * or it times out. Receiving any packet, even if it fails the checksum,
+     * will reset the timeout.
      *
      * @return the packet or null if an error occurs (timeout, other IOException, etc)
      */
-    private ReldatPacket receive() {
+    private ReldatPacket receivePacket(int timeout) {
         byte[] buffer = new byte[MSS];
         DatagramPacket udpPacket = new DatagramPacket(buffer, MSS);
 
+
         try {
+            // Set the timeout on the underlying UDP socket
+            this.setSoTimeout(timeout);
+
+            // Receive the packet
             ReldatPacket packet;
             do {
                 receive(udpPacket);
                 packet = ReldatPacket.fromUDP(udpPacket);
             } while (packet == null || !packet.verifyChecksum());
+
+            // Set the sendWindow to the other side's advertised receive window
+            this.sendWindow = packet.getWindowSize();
+
             return packet;
         } catch (IOException e) {
             return null;
@@ -152,8 +211,10 @@ public class ReldatSocket extends DatagramSocket {
      *
      * @param packet the ReldatPacket to send
      * @param address the SocketAddress to send it to
+     * @throws IOException when the packet fails to send or serialization
+     *                     of the packet to bytes fails
      */
-    private void send(ReldatPacket packet, SocketAddress address) throws IOException {
+    private void sendPacket(ReldatPacket packet, SocketAddress address) throws IOException {
         byte[] data = packet.getBytes();
         DatagramPacket udpPacket = new DatagramPacket(data, data.length, address);
         send(udpPacket);
