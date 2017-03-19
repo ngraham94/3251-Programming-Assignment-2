@@ -22,6 +22,7 @@ public class Client {
         try {
             sock = new ReldatSocket(windowSize);
             sock.connect(address);
+            System.out.printf("Connected to %s\n", sock.getRemoteSocketAddress());
         } catch (Exception e) {
             System.err.println(e.getMessage());
             System.exit(1);

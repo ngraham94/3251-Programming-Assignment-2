@@ -28,12 +28,12 @@ public class Server {
         System.out.printf("Window size set to %d\n", windowSize);
         System.out.printf("Server listening on %s\n", sock.getLocalSocketAddress());
 
+        System.out.println();
 
+        // Infinite loop for accepting and handling new connections
         while (true) {
-            try {
-                ReldatSocket conn = sock.accept();
-            } catch (Exception e) {
-            }
+            ReldatSocket conn = sock.accept();
+            System.out.printf("Connection accepted from %s\n", conn.getRemoteSocketAddress());
         }
     }
 }

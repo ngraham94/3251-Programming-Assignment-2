@@ -1,10 +1,7 @@
 package network;
 
 import java.io.IOException;
-import java.net.ConnectException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.SocketAddress;
+import java.net.*;
 import java.util.Random;
 
 public class ReldatSocket extends DatagramSocket {
@@ -70,34 +67,44 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Blocks until a new connection is accepted
      *
+     * The connection is just a new ReldatSocket for the connection
+     *
      * @return a new socket for the newly accepted connection
      * @throws IOException error while receiving packet
      */
-    public ReldatSocket accept() throws IOException {
-        // Blocks until receiving a SYN packet
-        ReldatPacket syn;
-        do {
-            syn = receivePacket();
-        } while (syn == null || !syn.getSYN());
+    public ReldatSocket accept() {
+        // Blocks until a connection is accepted
+        while (true) {
+            try {
+                // Blocks until receiving a SYN packet
+                ReldatPacket syn;
+                do {
+                    syn = receivePacket(0);
+                } while (syn == null || !syn.getSYN());
 
-        // Create new socket for the new connection
-        ReldatSocket conn = new ReldatSocket(windowSize);
-        conn.remoteSocketAddress = syn.getSocketAddress();
+                // Create new socket for the new connection
+                ReldatSocket conn = new ReldatSocket(windowSize);
+                conn.remoteSocketAddress = syn.getSocketAddress();
 
-        // Send SYNACK
-        ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum);
-        synack.setSYN();
-        synack.setACK(syn.getSeqNum() + 1);
-        conn.sendPacket(synack, syn.getSocketAddress());
+                // Create SYNACK packet
+                ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum++);
+                synack.setSYN();
+                synack.setACK(syn.getSeqNum() + 1);
 
-        // Wait for ACK
-        ReldatPacket ack;
-        do {
-            ack = conn.receivePacket();
-        } while (ack == null || !ack.getACK());
+                // Send SYNACK and wait for ACK
+                // TODO: consider what will happen if final ACK is dropped
+                ReldatPacket ack;
+                do {
+                    conn.sendPacket(synack, syn.getSocketAddress());
+                    ack = conn.receivePacket(2 * TIMEOUT);
+                } while (ack == null || !ack.getACK() || ack.getAckNum() != conn.seqNum);
 
-        conn.isConnected = true;
-        return conn;
+                conn.isConnected = true;
+                return conn;
+            } catch (IOException e) {
+                System.err.println(e.getMessage());
+            }
+        }
     }
 
     /**
@@ -117,20 +124,22 @@ public class ReldatSocket extends DatagramSocket {
             ReldatPacket synack;
             do {
                 sendPacket(syn, address);
-                synack = receivePacket();
+                synack = receivePacket(2 * TIMEOUT);
             } while (synack == null || !synack.getSYN() || !synack.getACK() ||
                     seqNum != synack.getAckNum());
 
             // Get the address of the newly opened socket on the server
             SocketAddress newAddress = synack.getSocketAddress();
 
-            ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
+            ReldatPacket ack = new ReldatPacket(windowSize, seqNum++);
             ack.setACK(synack.getSeqNum() + 1);
             sendPacket(ack, newAddress);
 
             isConnected = true;
+            remoteSocketAddress = newAddress;
         } catch (IOException e) {
-            throw new ConnectException(e.getMessage());
+            throw new ConnectException("Failed to establish connection: " +
+                    e.getMessage());
         }
     }
 
@@ -165,7 +174,7 @@ public class ReldatSocket extends DatagramSocket {
         return null;
     }
 
-    private ReldatPacket receivePacket() {
+    private ReldatPacket receivePacket() throws SocketTimeoutException {
         return receivePacket(TIMEOUT);
     }
 
@@ -176,30 +185,38 @@ public class ReldatSocket extends DatagramSocket {
      * or it times out. Receiving any packet, even if it fails the checksum,
      * will reset the timeout.
      *
-     * @return the packet or null if an error occurs (timeout, other IOException, etc)
+     * This also has the side effect of setting the send window to
+     * the received packet's advertised window size.
+     *
+     * @param timeout the timeout in milliseconds. A timeout of 0 is an infinite timeout
+     * @return the packet
+     * @throws SocketTimeoutException if the timeout is reached
      */
-    private ReldatPacket receivePacket(int timeout) {
-        byte[] buffer = new byte[MSS];
-        DatagramPacket udpPacket = new DatagramPacket(buffer, MSS);
+    private ReldatPacket receivePacket(int timeout) throws SocketTimeoutException {
+        // Block until a valid packet is received or socket times out
+        while (true) {
+            try {
+                // Set the timeout on the underlying UDP socket
+                this.setSoTimeout(timeout);
 
+                // Receive the packet
+                ReldatPacket packet;
+                do {
+                    byte[] buffer = new byte[MSS];
+                    DatagramPacket udpPacket = new DatagramPacket(buffer, MSS);
 
-        try {
-            // Set the timeout on the underlying UDP socket
-            this.setSoTimeout(timeout);
+                    receive(udpPacket);
+                    packet = ReldatPacket.fromUDP(udpPacket);
+                } while (packet == null || !packet.verifyChecksum());
 
-            // Receive the packet
-            ReldatPacket packet;
-            do {
-                receive(udpPacket);
-                packet = ReldatPacket.fromUDP(udpPacket);
-            } while (packet == null || !packet.verifyChecksum());
+                // Set the sendWindow to the other side's advertised receive window
+                this.sendWindow = packet.getWindowSize();
 
-            // Set the sendWindow to the other side's advertised receive window
-            this.sendWindow = packet.getWindowSize();
-
-            return packet;
-        } catch (IOException e) {
-            return null;
+                return packet;
+            } catch (SocketTimeoutException e) {
+                throw e;
+            } catch (IOException e) {
+            }
         }
     }
 
