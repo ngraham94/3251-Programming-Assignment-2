@@ -4,6 +4,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 
 public class Client {
+    private int expectedAck;
     public static void main(String[] args) {
         // Parse input args
         SocketAddress address = null;

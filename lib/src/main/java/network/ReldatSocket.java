@@ -2,10 +2,13 @@ package network;
 
 import java.io.IOException;
 import java.net.*;
+import java.util.Arrays;
 import java.util.Random;
 
 public class ReldatSocket extends DatagramSocket {
-    /** The maximum segment size in bytes */
+    /**
+     * The maximum segment size in bytes
+     */
     private static final int MSS = 1000;
 
     /**
@@ -39,7 +42,7 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Construct a ReldatSocket bound on a specific port.
      *
-     * @param port the port to bind on
+     * @param port       the port to bind on
      * @param windowSize the receiving window size
      * @throws IOException exception inherited from parent DatagramSocket
      */
@@ -51,7 +54,7 @@ public class ReldatSocket extends DatagramSocket {
         this.seqNum = new Random().nextInt() & Integer.MAX_VALUE;
 
         // Set receive buffer size
-        this.setReceiveBufferSize(windowSize*MSS);
+        this.setReceiveBufferSize(windowSize * MSS);
     }
 
     /**
@@ -66,7 +69,7 @@ public class ReldatSocket extends DatagramSocket {
 
     /**
      * Blocks until a new connection is accepted
-     *
+     * <p>
      * The connection is just a new ReldatSocket for the connection
      *
      * @return a new socket for the newly accepted connection
@@ -109,7 +112,7 @@ public class ReldatSocket extends DatagramSocket {
 
     /**
      * Connects to destination address:port
-     *
+     * <p>
      * This operation blocks until the connection is established.
      *
      * @param address the address to connect to
@@ -160,7 +163,25 @@ public class ReldatSocket extends DatagramSocket {
      * @param data the data to send
      */
     public void send(byte[] data) {
-        // TODO: Implement this
+        boolean fin = false;
+        int startIndex = 0; //Start of the segment of data to be sent
+        int endIndex = (data.length <= windowSize) ? (data.length - 1) : (windowSize - 1);
+        while (!fin) {
+            byte[] currentSegment = Arrays.copyOfRange(data, startIndex, endIndex);
+            ReldatPacket outgoing = new ReldatPacket(currentSegment, sendWindow, seqNum++);
+            outgoing.setSYN();
+            if (endIndex == data.length - 1) {
+                outgoing.setFIN();
+                outgoing.setACK(endIndex); //Setting these based off the README
+            }
+            try {
+                sendPacket(outgoing, remoteSocketAddress);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            startIndex = endIndex + 1;
+            endIndex = ((startIndex + windowSize) <= data.length - 1) ? (startIndex + windowSize) : (data.length - 1);
+        }
     }
 
     /**
@@ -170,7 +191,23 @@ public class ReldatSocket extends DatagramSocket {
      * @return an array of bytes containing the received data
      */
     public byte[] receive(int length) {
-        // TODO: Implement this
+        byte[] buffer = new byte[2048]; //not sure what default buffer should be
+        boolean fin = false;
+        ReldatPacket incoming = null;
+        while (!fin) {
+            try {
+                incoming = receivePacket();
+            } catch (SocketTimeoutException e) {
+                e.printStackTrace();
+            }
+            if (incoming.getACK()) {
+                try {
+                    this.setSendBufferSize(incoming.getWindowSize());
+                } catch (SocketException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
         return null;
     }
 
@@ -184,7 +221,7 @@ public class ReldatSocket extends DatagramSocket {
      * This should block until a packet with valid checksum is received
      * or it times out. Receiving any packet, even if it fails the checksum,
      * will reset the timeout.
-     *
+     * <p>
      * This also has the side effect of setting the send window to
      * the received packet's advertised window size.
      *
@@ -226,7 +263,7 @@ public class ReldatSocket extends DatagramSocket {
      * This is an internal/unreliable operation and does
      * not check for ACKS to verify it is received.
      *
-     * @param packet the ReldatPacket to send
+     * @param packet  the ReldatPacket to send
      * @param address the SocketAddress to send it to
      * @throws IOException when the packet fails to send or serialization
      *                     of the packet to bytes fails
