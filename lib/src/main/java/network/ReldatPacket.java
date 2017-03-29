@@ -125,6 +125,10 @@ public class ReldatPacket implements Serializable {
         return data;
     }
 
+    public int getSize() {
+        return size;
+    }
+
     public int getWindowSize() {
         return windowSize;
     }

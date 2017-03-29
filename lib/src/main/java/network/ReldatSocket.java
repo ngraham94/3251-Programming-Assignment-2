@@ -2,6 +2,9 @@ package network;
 
 import java.io.IOException;
 import java.net.*;
+import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.Random;
 
 public class ReldatSocket extends DatagramSocket {
@@ -21,11 +24,12 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * The size of the send window in bytes.
      */
-    private int sendWindow;
+    private int sendWindowSize;
 
     /**
      * The current sequence number.
      * The next packet sent will be sent with this value.
+     * TODO: make sure sequence numbers wrap around on overflows; might have to make it a long
      */
     private int seqNum;
 
@@ -70,7 +74,6 @@ public class ReldatSocket extends DatagramSocket {
      * The connection is just a new ReldatSocket for the connection
      *
      * @return a new socket for the newly accepted connection
-     * @throws IOException error while receiving packet
      */
     public ReldatSocket accept() {
         // Blocks until a connection is accepted
@@ -160,7 +163,26 @@ public class ReldatSocket extends DatagramSocket {
      * @param data the data to send
      */
     public void send(byte[] data) {
-        // TODO: Implement this
+        ByteBuffer dataBuffer = ByteBuffer.wrap(data);
+        Queue<ReldatPacket> sendWindow = new LinkedList<>();
+
+        do {
+            // Fill up the queue for the send window
+            while (dataBuffer.hasRemaining() && sendWindow.size() < sendWindowSize) {
+                int length = Math.min(MSS - ReldatPacket.getHeaderSize(), dataBuffer.remaining());
+                byte[] bytes = new byte[length];
+                dataBuffer.get(bytes);
+
+                ReldatPacket packet = new ReldatPacket(bytes, windowSize, seqNum);
+                // Increment sequence number, TODO: make sure it wraps around on overflow
+                seqNum += packet.getSize() + 1;
+
+                sendWindow.add(packet);
+            }
+
+            // TODO: add logic for sending and handling ACKs
+
+        } while (!sendWindow.isEmpty());
     }
 
     /**
@@ -209,8 +231,8 @@ public class ReldatSocket extends DatagramSocket {
                     packet = ReldatPacket.fromUDP(udpPacket);
                 } while (packet == null || !packet.verifyChecksum());
 
-                // Set the sendWindow to the other side's advertised receive window
-                this.sendWindow = packet.getWindowSize();
+                // Set the sendWindowSize to the other side's advertised receive window
+                this.sendWindowSize = packet.getWindowSize();
 
                 return packet;
             } catch (SocketTimeoutException e) {
