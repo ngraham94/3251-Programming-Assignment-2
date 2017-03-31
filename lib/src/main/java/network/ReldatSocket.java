@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.Queue;
-import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 
 public class ReldatSocket extends DatagramSocket {
@@ -52,8 +51,8 @@ public class ReldatSocket extends DatagramSocket {
         super(port);
         this.windowSize = windowSize;
 
-        // Initialize random positive seq num
-        this.seqNum = new Random().nextInt() & Integer.MAX_VALUE;
+        // this.seqNum = new Random().nextInt() & Integer.MAX_VALUE;
+        seqNum = 0;
 
         // Set receive buffer size
         this.setReceiveBufferSize(windowSize * MSS);
@@ -93,7 +92,7 @@ public class ReldatSocket extends DatagramSocket {
                 // Create SYNACK packet
                 ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum);
                 synack.setSYN();
-                synack.setACK(syn.getSeqNum() + 1);
+                synack.setACK(calcAck(syn));
                 conn.updateSeqNum(0);
 
                 // Send SYNACK and wait for ACK
@@ -138,7 +137,7 @@ public class ReldatSocket extends DatagramSocket {
             SocketAddress newAddress = synack.getSocketAddress();
 
             ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
-            ack.setACK(synack.getSeqNum() + 1);
+            ack.setACK(calcAck(synack));
             sendPacket(ack, newAddress);
             updateSeqNum(0);
 
@@ -165,24 +164,47 @@ public class ReldatSocket extends DatagramSocket {
      * remote SocketAddress
      *
      * @param data the data to send
+     * @throws IOException if the any packet fails to send
      */
-    public void send(byte[] data) {
+    public void send(byte[] data) throws IOException {
         ByteBuffer dataBuffer = ByteBuffer.wrap(data);
         Queue<ReldatPacket> sendWindow = new ArrayBlockingQueue<>(sendWindowSize);
 
         while (dataBuffer.hasRemaining() || !sendWindow.isEmpty()) {
-            // Send all packets in send window
-            if (sendWindow.size() == sendWindowSize || !dataBuffer.hasRemaining()) {
-                // TODO: add logic for sending and handling ACKs
-            } else {
-                // Populate the send window
+            // Convert the next bytes to packets and populate the send window
+            if (sendWindow.size() < sendWindowSize && dataBuffer.hasRemaining()) {
                 int length = Math.min(MSS - ReldatPacket.getHeaderSize(), dataBuffer.remaining());
                 byte[] bytes = new byte[length];
                 dataBuffer.get(bytes);
 
                 ReldatPacket packet = new ReldatPacket(bytes, windowSize, seqNum);
                 updateSeqNum(packet.getSize());
-                sendWindow.add(packet);
+                sendWindow.offer(packet);
+            } else {
+                // Send everything in send window
+                for (int i = 0; i < sendWindow.size(); ++i) {
+                    ReldatPacket packet = sendWindow.poll();
+                    sendPacket(packet, remoteSocketAddress);
+
+                    // Add back in queue in case it needs to be resent
+                    sendWindow.offer(packet);
+                }
+
+                // Attempt to receive sendWindow.size() ACKs over the timeout period
+                for (int i = 0; i < sendWindow.size(); ++i) {
+                    try {
+                        // Get an ACK
+                        ReldatPacket ack = receivePacket(TIMEOUT / sendWindow.size());
+                        if (ack.getACK()) {
+                            // Remove all acknowledged packets from the window
+                            while (!sendWindow.isEmpty() &&
+                                    sendWindow.peek().getSeqNum() < ack.getAckNum()) {
+                                sendWindow.remove();
+                            }
+                        }
+                    } catch (SocketTimeoutException e) {
+                    }
+                }
             }
         }
     }
@@ -287,5 +309,15 @@ public class ReldatSocket extends DatagramSocket {
      */
     private void updateSeqNum(int size) {
         seqNum = (seqNum + size + 1) & Integer.MAX_VALUE;
+    }
+
+    /**
+     * Calculate the ACK number to use to acknowledge a packet
+     *
+     * @param packet the packet to acknowledge
+     * @return the ACK number
+     */
+    private int calcAck(ReldatPacket packet) {
+        return (packet.getSeqNum() + packet.getSize() + 1) & Integer.MAX_VALUE;
     }
 }
