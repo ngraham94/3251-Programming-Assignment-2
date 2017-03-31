@@ -2,8 +2,10 @@ package network;
 
 import java.io.IOException;
 import java.net.*;
-import java.util.Arrays;
+import java.nio.ByteBuffer;
+import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.ArrayBlockingQueue;
 
 public class ReldatSocket extends DatagramSocket {
     /**
@@ -24,7 +26,7 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * The size of the send window in bytes.
      */
-    private int sendWindow;
+    private int sendWindowSize;
 
     /**
      * The current sequence number.
@@ -73,7 +75,6 @@ public class ReldatSocket extends DatagramSocket {
      * The connection is just a new ReldatSocket for the connection
      *
      * @return a new socket for the newly accepted connection
-     * @throws IOException error while receiving packet
      */
     public ReldatSocket accept() {
         // Blocks until a connection is accepted
@@ -90,9 +91,10 @@ public class ReldatSocket extends DatagramSocket {
                 conn.remoteSocketAddress = syn.getSocketAddress();
 
                 // Create SYNACK packet
-                ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum++);
+                ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum);
                 synack.setSYN();
                 synack.setACK(syn.getSeqNum() + 1);
+                conn.updateSeqNum(0);
 
                 // Send SYNACK and wait for ACK
                 // TODO: consider what will happen if final ACK is dropped
@@ -119,8 +121,9 @@ public class ReldatSocket extends DatagramSocket {
      * @throws ConnectException when connection fails
      */
     public void connect(SocketAddress address) throws ConnectException {
-        ReldatPacket syn = new ReldatPacket(windowSize, seqNum++);
+        ReldatPacket syn = new ReldatPacket(windowSize, seqNum);
         syn.setSYN();
+        updateSeqNum(0);
 
         try {
             // Send SYN and wait for SYNACK
@@ -134,9 +137,10 @@ public class ReldatSocket extends DatagramSocket {
             // Get the address of the newly opened socket on the server
             SocketAddress newAddress = synack.getSocketAddress();
 
-            ReldatPacket ack = new ReldatPacket(windowSize, seqNum++);
+            ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
             ack.setACK(synack.getSeqNum() + 1);
             sendPacket(ack, newAddress);
+            updateSeqNum(0);
 
             isConnected = true;
             remoteSocketAddress = newAddress;
@@ -163,24 +167,23 @@ public class ReldatSocket extends DatagramSocket {
      * @param data the data to send
      */
     public void send(byte[] data) {
-        boolean fin = false;
-        int startIndex = 0; //Start of the segment of data to be sent
-        int endIndex = (data.length <= windowSize) ? (data.length - 1) : (windowSize - 1);
-        while (!fin) {
-            byte[] currentSegment = Arrays.copyOfRange(data, startIndex, endIndex);
-            ReldatPacket outgoing = new ReldatPacket(currentSegment, sendWindow, seqNum++);
-            outgoing.setSYN();
-            if (endIndex == data.length - 1) {
-                outgoing.setFIN();
-                outgoing.setACK(endIndex); //Setting these based off the README
+        ByteBuffer dataBuffer = ByteBuffer.wrap(data);
+        Queue<ReldatPacket> sendWindow = new ArrayBlockingQueue<>(sendWindowSize);
+
+        while (dataBuffer.hasRemaining() || !sendWindow.isEmpty()) {
+            // Send all packets in send window
+            if (sendWindow.size() == sendWindowSize || !dataBuffer.hasRemaining()) {
+                // TODO: add logic for sending and handling ACKs
+            } else {
+                // Populate the send window
+                int length = Math.min(MSS - ReldatPacket.getHeaderSize(), dataBuffer.remaining());
+                byte[] bytes = new byte[length];
+                dataBuffer.get(bytes);
+
+                ReldatPacket packet = new ReldatPacket(bytes, windowSize, seqNum);
+                updateSeqNum(packet.getSize());
+                sendWindow.add(packet);
             }
-            try {
-                sendPacket(outgoing, remoteSocketAddress);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            startIndex = endIndex + 1;
-            endIndex = ((startIndex + windowSize) <= data.length - 1) ? (startIndex + windowSize) : (data.length - 1);
         }
     }
 
@@ -246,8 +249,8 @@ public class ReldatSocket extends DatagramSocket {
                     packet = ReldatPacket.fromUDP(udpPacket);
                 } while (packet == null || !packet.verifyChecksum());
 
-                // Set the sendWindow to the other side's advertised receive window
-                this.sendWindow = packet.getWindowSize();
+                // Set the sendWindowSize to the other side's advertised receive window
+                this.sendWindowSize = packet.getWindowSize();
 
                 return packet;
             } catch (SocketTimeoutException e) {
@@ -272,5 +275,17 @@ public class ReldatSocket extends DatagramSocket {
         byte[] data = packet.getBytes();
         DatagramPacket udpPacket = new DatagramPacket(data, data.length, address);
         send(udpPacket);
+    }
+
+    /**
+     * Helper function to update the sequence number by the size of the packet.
+     * <p>
+     * If the value overflows an int, it wraps around from 0.
+     *
+     * @param size the size of the packet in bytes
+     * @return the update sequence number
+     */
+    private void updateSeqNum(int size) {
+        seqNum = (seqNum + size + 1) & Integer.MAX_VALUE;
     }
 }
