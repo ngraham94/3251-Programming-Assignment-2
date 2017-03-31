@@ -3,7 +3,7 @@ package network;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 
 public class ReldatSocket extends DatagramSocket {
@@ -32,6 +32,11 @@ public class ReldatSocket extends DatagramSocket {
      * The next packet sent will be sent with this value.
      */
     private int seqNum;
+
+    /**
+     * The last ACKed number
+     */
+    private int lastAcked;
 
     /**
      * The socket address this socket is connected to.
@@ -92,7 +97,8 @@ public class ReldatSocket extends DatagramSocket {
                 // Create SYNACK packet
                 ReldatPacket synack = new ReldatPacket(windowSize, conn.seqNum);
                 synack.setSYN();
-                synack.setACK(calcAck(syn));
+                conn.lastAcked = calcAck(syn);
+                synack.setACK(conn.lastAcked);
                 conn.updateSeqNum(0);
 
                 // Send SYNACK and wait for ACK
@@ -137,7 +143,8 @@ public class ReldatSocket extends DatagramSocket {
             SocketAddress newAddress = synack.getSocketAddress();
 
             ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
-            ack.setACK(calcAck(synack));
+            lastAcked = calcAck(synack);
+            ack.setACK(lastAcked);
             sendPacket(ack, newAddress);
             updateSeqNum(0);
 
@@ -198,7 +205,7 @@ public class ReldatSocket extends DatagramSocket {
                         if (ack.getACK()) {
                             // Remove all acknowledged packets from the window
                             while (!sendWindow.isEmpty() &&
-                                    sendWindow.peek().getSeqNum() < ack.getAckNum()) {
+                                    calcAck(sendWindow.peek()) <= ack.getAckNum()) {
                                 sendWindow.remove();
                             }
                         }
@@ -216,23 +223,46 @@ public class ReldatSocket extends DatagramSocket {
      * @return an array of bytes containing the received data
      */
     public byte[] receive(int length) {
-        byte[] buffer = new byte[2048]; //not sure what default buffer should be
-        boolean fin = false;
-        ReldatPacket incoming = null;
-        while (!fin) {
+        // The priority queue to sort received packets by their sequence number
+        Queue<ReldatPacket> buffer = new PriorityQueue<>(length / (MSS - ReldatPacket.getHeaderSize()) + 1,
+                Comparator.comparingInt(ReldatPacket::getSeqNum));
+
+        Set<Integer> receivedPackets = new HashSet<>();
+
+        // The number of bytes received so far
+        int received = 0;
+
+        // Receive data while received bytes is less than length
+        while (received < length) {
             try {
-                incoming = receivePacket();
-            } catch (SocketTimeoutException e) {
-                e.printStackTrace();
-            }
-            if (incoming.getACK()) {
-                try {
-                    this.setSendBufferSize(incoming.getWindowSize());
-                } catch (SocketException e) {
-                    e.printStackTrace();
+                ReldatPacket packet = receivePacket(0);
+
+                System.out.printf("Last acked: %d\n", lastAcked);
+                System.out.printf("Seq #: %d\n", packet.getSeqNum());
+
+                // Verify packet is in receive window and not duplicate
+                if (packet.getSeqNum() > lastAcked &&
+                        packet.getSeqNum() < lastAcked + length - received &&
+                        !receivedPackets.contains(packet.getSeqNum())) {
+
+                    // Add packet to the buffer
+                    buffer.add(packet);
+                    receivedPackets.add(packet.getSeqNum());
+
+                    // TODO: calculate ack to use
+                    int ackNum = calcAck(packet);
+                    lastAcked = ackNum;
+
+                    ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
+                    ack.setACK(ackNum);
+                    updateSeqNum(0);
+                    sendPacket(packet, remoteSocketAddress);
                 }
+            } catch (IOException e) {
             }
         }
+
+        // TODO: convert the buffer to a byte array
         return null;
     }
 
