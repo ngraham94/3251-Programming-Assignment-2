@@ -3,7 +3,9 @@ package network;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Comparator;
+import java.util.Queue;
+import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 
 public class ReldatSocket extends DatagramSocket {
@@ -201,7 +203,7 @@ public class ReldatSocket extends DatagramSocket {
                 for (int i = 0; i < sendWindow.size(); ++i) {
                     try {
                         // Get an ACK
-                        ReldatPacket ack = receivePacket(TIMEOUT / sendWindow.size());
+                        ReldatPacket ack = receivePacket(Math.max(1, TIMEOUT / sendWindow.size()));
                         if (ack.getACK()) {
                             // Remove all acknowledged packets from the window
                             while (!sendWindow.isEmpty() &&
@@ -223,47 +225,29 @@ public class ReldatSocket extends DatagramSocket {
      * @return an array of bytes containing the received data
      */
     public byte[] receive(int length) {
-        // The priority queue to sort received packets by their sequence number
-        Queue<ReldatPacket> buffer = new PriorityQueue<>(length / (MSS - ReldatPacket.getHeaderSize()) + 1,
-                Comparator.comparingInt(ReldatPacket::getSeqNum));
-
-        Set<Integer> receivedPackets = new HashSet<>();
-
-        // The number of bytes received so far
+        // The total amount of bytes received so far
         int received = 0;
 
-        // Receive data while received bytes is less than length
+        // The buffer
+        ByteBuffer buffer = ByteBuffer.allocate(length);
+
         while (received < length) {
-            try {
-                ReldatPacket packet = receivePacket(0);
+            // The receive window
+            TreeSet<ReldatPacket> window = new TreeSet<>(Comparator.comparingInt(ReldatPacket::getSeqNum));
 
-                System.out.printf("Last acked: %d\n", lastAcked);
-                System.out.printf("Seq #: %d\n", packet.getSeqNum());
-
-                // Verify packet is in receive window and not duplicate
-                if (packet.getSeqNum() > lastAcked &&
-                        packet.getSeqNum() < lastAcked + length - received &&
-                        !receivedPackets.contains(packet.getSeqNum())) {
-
-                    // Add packet to the buffer
-                    buffer.add(packet);
-                    receivedPackets.add(packet.getSeqNum());
-
-                    // TODO: calculate ack to use
-                    int ackNum = calcAck(packet);
-                    lastAcked = ackNum;
-
-                    ReldatPacket ack = new ReldatPacket(windowSize, seqNum);
-                    ack.setACK(ackNum);
-                    updateSeqNum(0);
-                    sendPacket(packet, remoteSocketAddress);
+            // Attempt to receive up to windowSize packets
+            for (int i = 0; i < windowSize; ++i) {
+                try {
+                    ReldatPacket packet = receivePacket(Math.max(1, TIMEOUT / windowSize));
+                    window.add(packet);
+                } catch (IOException e) {
                 }
-            } catch (IOException e) {
             }
+
+            // TODO: Send the ACK
         }
 
-        // TODO: convert the buffer to a byte array
-        return null;
+        return buffer.array();
     }
 
     private ReldatPacket receivePacket() throws SocketTimeoutException {
