@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.Objects;
 
 public class ReldatPacket implements Serializable {
     /** Packet headers */
@@ -232,5 +233,10 @@ public class ReldatPacket implements Serializable {
                 && seqNum == p2.seqNum
                 && ackNum == p2.ackNum
                 && Arrays.equals(data, p2.data);
+    }
+
+    @Override
+    public int hashCode() {
+        return seqNum;
     }
 }
