@@ -1,6 +1,9 @@
 import network.ReldatSocket;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
+import java.util.HashMap;
 
 public class Server {
     public static void main(String[] args) {
@@ -15,7 +18,7 @@ public class Server {
             System.err.println("USAGE: ./reldat-server.sh PORT WINDOW_SIZE");
             System.exit(1);
         }
-
+        String receivedBytes=null;
         // Create a new socket and listen on the port
         ReldatSocket sock = null;
         try {
@@ -34,6 +37,28 @@ public class Server {
         while (true) {
             ReldatSocket conn = sock.accept();
             System.out.printf("Connection accepted from %s\n", conn.getRemoteSocketAddress());
+            while (conn.isConnected()) {
+                try {
+                    receivedBytes = new String(conn.receive(windowSize), "UTF-8");
+                    conn.send(processMessage(receivedBytes).getBytes());
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            System.out.println("Connection Closed");
+            System.out.printf("Server listening on %s\n", sock.getLocalSocketAddress());
+
+            System.out.println();
         }
+    }
+
+    private static String processMessage(String message) {
+        if (message != null) {
+            String result = message.toUpperCase();
+            return result;
+        }
+        return "ERR";
     }
 }
