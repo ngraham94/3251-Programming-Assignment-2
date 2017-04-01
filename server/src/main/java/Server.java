@@ -1,9 +1,7 @@
 import network.ReldatSocket;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.InetAddress;
-import java.util.HashMap;
+import java.nio.ByteBuffer;
 
 public class Server {
     public static void main(String[] args) {
@@ -18,7 +16,7 @@ public class Server {
             System.err.println("USAGE: ./reldat-server.sh PORT WINDOW_SIZE");
             System.exit(1);
         }
-        String receivedBytes=null;
+
         // Create a new socket and listen on the port
         ReldatSocket sock = null;
         try {
@@ -37,28 +35,29 @@ public class Server {
         while (true) {
             ReldatSocket conn = sock.accept();
             System.out.printf("Connection accepted from %s\n", conn.getRemoteSocketAddress());
-            while (conn.isConnected()) {
-                try {
-                    receivedBytes = new String(conn.receive(windowSize), "UTF-8");
-                    conn.send(processMessage(receivedBytes).getBytes());
-                } catch (UnsupportedEncodingException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            System.out.println("Connection Closed");
-            System.out.printf("Server listening on %s\n", sock.getLocalSocketAddress());
 
-            System.out.println();
+            // Get length of incoming data
+            byte[] lengthBytes = conn.receive(4);
+            int length = ByteBuffer.wrap(lengthBytes).getInt();
+
+            byte[] data = conn.receive(length);
+            byte[] transformed = transformData(data);
+
+            // Calc length of response
+            lengthBytes = ByteBuffer.allocate(4).putInt(transformed.length).array();
+
+            // Send response
+            try {
+                conn.send(lengthBytes);
+                conn.send(transformed);
+            } catch (IOException e) {
+                System.err.println(e.getMessage());
+            }
         }
     }
 
-    private static String processMessage(String message) {
-        if (message != null) {
-            String result = message.toUpperCase();
-            return result;
-        }
-        return "ERR";
+    private static byte[] transformData(byte[] data) {
+        String string = new String(data);
+        return string.toUpperCase().getBytes();
     }
 }
