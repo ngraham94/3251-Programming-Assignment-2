@@ -108,17 +108,30 @@ public class ReldatSocket extends DatagramSocket {
                 synack.setACK(calcAck(syn));
                 conn.updateSeqNum(0);
 
-                // Send SYNACK and wait for ACK
-                // TODO: consider what will happen if final ACK is dropped
-                ReldatPacket ack;
-                do {
+                // Attempt to receive an ACK over CONNECT_TIMEOUT
+                ReldatPacket ack = null;
+                for (int i = 0; i < CONNECT_TIMEOUT / TIMEOUT; ++i) {
                     conn.sendPacket(synack, syn.getSocketAddress());
-                    ack = conn.receivePacket(2 * TIMEOUT);
-                } while (ack == null || !ack.getACK() || ack.getAckNum() != conn.seqNum);
 
-                conn.lastReceived = ack.getSeqNum();
-                conn.isConnected = true;
-                return conn;
+                    try {
+                        ack = conn.receivePacket();
+
+                        if (ack.getAckNum() >= calcAck(synack)) {
+                            break;
+                        } else {
+                            ack = null;
+                        }
+                    } catch (SocketTimeoutException e) {
+                    }
+                }
+
+                if (ack != null) {
+                    conn.lastReceived = ack.getSeqNum();
+                    conn.isConnected = true;
+                    return conn;
+                } else {
+                    System.err.println("Failed to receive final ACK. Connection reset");
+                }
             } catch (IOException e) {
                 System.err.println(e.getMessage());
             } catch (DisconnectException e) {
@@ -141,13 +154,21 @@ public class ReldatSocket extends DatagramSocket {
         updateSeqNum(0);
 
         try {
-            // Send SYN and wait for SYNACK
-            ReldatPacket synack;
-            do {
+            // Send SYN and attempt to receive SYNACK over CONNECT_TIMEOUT
+            ReldatPacket synack = null;
+            for (int i = 0; i < CONNECT_TIMEOUT / TIMEOUT; ++i) {
                 sendPacket(syn, address);
-                synack = receivePacket(2 * TIMEOUT);
-            } while (synack == null || !synack.getSYN() || !synack.getACK() ||
-                    seqNum != synack.getAckNum());
+
+                try {
+                    synack = receivePacket();
+
+                    if (synack.getAckNum() >= calcAck(syn) && synack.getSYN()) break;
+                    else synack = null;
+                } catch (SocketTimeoutException e) {
+                }
+            }
+
+            if (synack == null) throw new IOException("timed out on receiving SYNACK");
 
             // Get the address of the newly opened socket on the server
             SocketAddress newAddress = synack.getSocketAddress();
