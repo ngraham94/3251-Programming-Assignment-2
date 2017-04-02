@@ -34,9 +34,10 @@ SEQ_NUM (32)   | ACK_NUM (32)     | CHECKSUM (64)
 ### Connection Opening / Termination
 Opening: 3-way handshake similar to TCP (SYN, SYNACK, ACK)
 
-Termination: FIN and ACK to signal no more data to send.
-Connection closes when both side FINs. ACKS for the FIN
-are assumed after 2*timeout.
+Termination: One side sends a FIN packet to signal connection
+termination. The receiver responds with a FINACK. If no
+FINACK is received after a set timeout, the FIN sender
+marks the connection closed.
 
 ### Duplicate Packets
 Duplicate packet is detected when a packet has a matching
@@ -65,7 +66,35 @@ resend all unacked packets in the window.
 
 ### Bytestream
 Segment the stream into separate messages. A message
-start with a header specifying the size of the message.
+start with a 4-bit integer specifying the size of the
+message.
+
+### Important functions
+These functions are all in the ReldatSocket class.
+
+send(byte[])
+
+Sends a byte array to the remote destination through
+the established connection. This blocks until all the
+data is sent or the connection is terminated.
+
+receive(int)
+
+Receives data from the remote socket through the
+established connection. Blocks until the specified
+length is received or the connection terminates.
+
+accept()
+
+Accepts a new connection from a client. Blocks until
+a connection is received.
+
+connect(SocketAddress)
+
+Attempts to establish a connection with the specified
+SocketAddress. This operation blocks until a connection
+is established, or throws a ConnectException on timeout.
+
 
 ### FSMs
 
@@ -75,10 +104,6 @@ start with a header specifying the size of the message.
 #### Server
 ![Server FSM](img/server-fsm.png)
 
-    
-## Files
-TODO
-
 ## Contributors
 - Kelvin Chen <kelvin@gatech.edu>
 - Nickolas Graham <ngraham7@gatech.edu>
