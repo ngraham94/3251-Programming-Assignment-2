@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.Objects;
 
 public class ReldatPacket implements Serializable {
     /** Packet headers */
@@ -114,6 +113,10 @@ public class ReldatPacket implements Serializable {
 
     public int getSeqNum() {
         return seqNum;
+    }
+
+    public boolean getFIN() {
+        return FIN;
     }
 
     public void setData(byte[] data) {

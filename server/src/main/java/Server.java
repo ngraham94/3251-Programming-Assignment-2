@@ -1,3 +1,4 @@
+import network.DisconnectException;
 import network.ReldatSocket;
 
 import java.io.IOException;
@@ -6,7 +7,7 @@ import java.nio.ByteBuffer;
 public class Server {
     public static void main(String[] args) {
         int port = 0,
-            windowSize = 0;
+                windowSize = 0;
 
         // Parse inputs
         try {
@@ -36,23 +37,28 @@ public class Server {
             ReldatSocket conn = sock.accept();
             System.out.printf("Connection accepted from %s\n", conn.getRemoteSocketAddress());
 
-            // Get length of incoming data
-            byte[] lengthBytes = conn.receive(4);
-            int length = ByteBuffer.wrap(lengthBytes).getInt();
+            while (conn.isConnected()) {
+                try {
+                    // Get length of incoming data
+                    byte[] lengthBytes = conn.receive(4);
+                    int length = ByteBuffer.wrap(lengthBytes).getInt();
 
-            byte[] data = conn.receive(length);
-            byte[] transformed = transformData(data);
+                    byte[] data = conn.receive(length);
+                    byte[] transformed = transformData(data);
 
-            // Calc length of response
-            lengthBytes = ByteBuffer.allocate(4).putInt(transformed.length).array();
+                    // Calc length of response
+                    lengthBytes = ByteBuffer.allocate(4).putInt(transformed.length).array();
 
-            // Send response
-            try {
-                conn.send(lengthBytes);
-                conn.send(transformed);
-            } catch (IOException e) {
-                System.err.println(e.getMessage());
+                    // Send response
+                    conn.send(lengthBytes);
+                    conn.send(transformed);
+                } catch (IOException e) {
+                    System.err.println(e.getMessage());
+                } catch (DisconnectException e) {
+                }
             }
+
+            System.out.println("Connection disconnected.");
         }
     }
 

@@ -1,3 +1,4 @@
+import network.DisconnectException;
 import network.ReldatSocket;
 
 import java.io.IOException;
@@ -39,7 +40,8 @@ public class Client {
             String command = scanner.nextLine();
 
             if (command.equalsIgnoreCase("disconnect")) {
-                // TODO: handle disconnect
+                sock.close();
+                System.out.println("Connection disconnected");
             } else if (command.matches("^transform\\s.+$")) {
                 String[] split = command.split("\\s+");
                 String filename = split[1];
@@ -65,8 +67,10 @@ public class Client {
                     byte[] response = sock.receive(resLength);
 
                     System.out.println(new String(response));
+                    // TODO: write response to file
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
+                } catch (DisconnectException e) {
                 }
 
             } else {

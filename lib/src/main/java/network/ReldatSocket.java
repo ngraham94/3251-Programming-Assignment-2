@@ -21,6 +21,11 @@ public class ReldatSocket extends DatagramSocket {
     private static final int TIMEOUT = 1000;
 
     /**
+     * Timeout used for connection related operations
+     */
+    private static final int CONNECT_TIMEOUT = 10000;
+
+    /**
      * The size of the receive window in bytes.
      */
     private final int windowSize;
@@ -116,6 +121,8 @@ public class ReldatSocket extends DatagramSocket {
                 return conn;
             } catch (IOException e) {
                 System.err.println(e.getMessage());
+            } catch (DisconnectException e) {
+                // This shouldn't happen
             }
         }
     }
@@ -156,6 +163,8 @@ public class ReldatSocket extends DatagramSocket {
         } catch (IOException e) {
             throw new ConnectException("Failed to establish connection: " +
                     e.getMessage());
+        } catch (DisconnectException e) {
+            // This shouldn't happen
         }
     }
 
@@ -175,8 +184,9 @@ public class ReldatSocket extends DatagramSocket {
      *
      * @param data the data to send
      * @throws IOException if the any packet fails to send
+     * @throws DisconnectException if the connection gets disconnected during send
      */
-    public void send(byte[] data) throws IOException {
+    public void send(byte[] data) throws IOException, DisconnectException {
         ByteBuffer dataBuffer = ByteBuffer.wrap(data);
         Queue<ReldatPacket> sendWindow = new ArrayBlockingQueue<>(sendWindowSize);
 
@@ -225,8 +235,9 @@ public class ReldatSocket extends DatagramSocket {
      *
      * @param length the length of the data to receive
      * @return an array of bytes containing the received data
+     * @throws DisconnectException if the connection is disconnected
      */
-    public byte[] receive(int length) {
+    public byte[] receive(int length) throws DisconnectException {
         // The total amount of bytes received so far
         int received = 0;
 
@@ -281,7 +292,34 @@ public class ReldatSocket extends DatagramSocket {
         return buffer.array();
     }
 
-    private ReldatPacket receivePacket() throws SocketTimeoutException {
+    @Override
+    public void close() {
+        // Create a FIN packet
+        ReldatPacket fin = new ReldatPacket(windowSize, seqNum);
+        fin.setFIN();
+        updateSeqNum(0);
+
+        // Attempt to send FIN and receive FINACK over CONNECT_TIMEOUT period
+        for (int i = 0; i < CONNECT_TIMEOUT / TIMEOUT; ++i) {
+            try {
+                sendPacket(fin, remoteSocketAddress);
+                ReldatPacket packet = receivePacket();
+
+                if (packet.getFIN() && calcAck(fin) <= packet.getAckNum()) {
+                    break;
+                }
+            } catch (IOException e) {
+            } catch (DisconnectException e) {
+                break;
+            }
+        }
+
+        // Close if FINACK is received or if timeout
+        super.close();
+        isConnected = false;
+    }
+
+    private ReldatPacket receivePacket() throws SocketTimeoutException, DisconnectException {
         return receivePacket(TIMEOUT);
     }
 
@@ -298,8 +336,9 @@ public class ReldatSocket extends DatagramSocket {
      * @param timeout the timeout in milliseconds. A timeout of 0 is an infinite timeout
      * @return the packet
      * @throws SocketTimeoutException if the timeout is reached
+     * @throws DisconnectException if the socket gets disconnected
      */
-    private ReldatPacket receivePacket(int timeout) throws SocketTimeoutException {
+    private ReldatPacket receivePacket(int timeout) throws SocketTimeoutException, DisconnectException {
         // Block until a valid packet is received or socket times out
         while (true) {
             try {
@@ -318,6 +357,21 @@ public class ReldatSocket extends DatagramSocket {
 
                 // Set the sendWindowSize to the other side's advertised receive window
                 this.sendWindowSize = packet.getWindowSize();
+
+                // Handle disconnect logic
+                if (packet.getFIN() && !packet.getACK()) {
+                    // Send a FINACK
+                    ReldatPacket finack = new ReldatPacket(windowSize, seqNum);
+                    updateSeqNum(0);
+                    finack.setFIN();
+                    finack.setACK(calcAck(packet));
+                    sendPacket(packet, remoteSocketAddress);
+
+                    // Mark socket closed and close underlying UDP socket
+                    super.close();
+                    this.isConnected = false;
+                    throw new DisconnectException();
+                }
 
                 return packet;
             } catch (SocketTimeoutException e) {
