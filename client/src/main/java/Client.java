@@ -1,6 +1,7 @@
 import network.DisconnectException;
 import network.ReldatSocket;
 
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -29,6 +30,8 @@ public class Client {
             sock = new ReldatSocket(windowSize);
             sock.connect(address);
             System.out.printf("Connected to %s\n", sock.getRemoteSocketAddress());
+            System.out.printf("NOTE: the connection will automatically be dropped after "
+                    + "%d seconds if no data is transferred\n", ReldatSocket.CONNECT_TIMEOUT / 1000);
         } catch (IOException e) {
             System.err.println(e.getMessage());
             System.exit(1);
@@ -54,6 +57,7 @@ public class Client {
                     length = ByteBuffer.allocate(4).putInt(data.length).array();
                 } catch (IOException e) {
                     System.err.printf("Cannot read file %s\n", e.getMessage());
+                    continue;
                 }
 
                 try {
@@ -66,17 +70,32 @@ public class Client {
                     int resLength = ByteBuffer.wrap(lengthBytes).getInt();
                     byte[] response = sock.receive(resLength);
 
-                    System.out.println(new String(response));
-                    // TODO: write response to file
+                    // Write response to file
+                    String out = getNewFilename(filename);
+                    System.out.println("Writing response to " + out);
+                    try (FileOutputStream stream = new FileOutputStream(out)) {
+                        stream.write(response);
+                    }
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                 } catch (DisconnectException e) {
-                    System.out.println("Disconnected from server due to timeout");
+                    System.out.println("Connection closed by server since it was idle");
                 }
 
             } else {
                 System.out.println("Invalid command");
             }
         }
+    }
+
+    private static String getNewFilename(String file) {
+        final String suffix = "-received";
+
+        int i = file.lastIndexOf(".");
+
+        // Original name does not have extension
+        if (i == -1) return file + suffix;
+
+        return file.substring(0, i) + suffix + file.substring(i);
     }
 }

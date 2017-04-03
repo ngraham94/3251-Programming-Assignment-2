@@ -23,7 +23,7 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Timeout used for connection related operations
      */
-    private static final int CONNECT_TIMEOUT = 15000;
+    public static final int CONNECT_TIMEOUT = 20000;
 
     /**
      * The size of the receive window in bytes.
@@ -261,8 +261,7 @@ public class ReldatSocket extends DatagramSocket {
             // Disconnect after a while if no data is received.
             if ((System.nanoTime() - timeOfLastReceive) / 1000000 > CONNECT_TIMEOUT) {
                 System.err.printf("No data received in %d seconds, disconnecting...\n", CONNECT_TIMEOUT / 1000);
-                this.isConnected = false;
-                super.close();
+                close();
                 throw new DisconnectException();
             }
         }
@@ -333,8 +332,7 @@ public class ReldatSocket extends DatagramSocket {
             // Disconnect after a while if no data is received.
             if ((System.nanoTime() - timeOfLastReceive) / 1000000 > CONNECT_TIMEOUT) {
                 System.err.printf("No data received in %d seconds, disconnecting...\n", CONNECT_TIMEOUT / 1000);
-                this.isConnected = false;
-                super.close();
+                close();
                 throw new DisconnectException();
             }
         }
