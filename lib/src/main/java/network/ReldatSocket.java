@@ -322,6 +322,8 @@ public class ReldatSocket extends DatagramSocket {
                     if (packet.getData() != null) {
                         buffer.put(packet.getData(), 0,
                                 Math.min(packet.getSize(), buffer.remaining()));
+                    } else {
+                        break;
                     }
 
                     // Remove from the receive window
