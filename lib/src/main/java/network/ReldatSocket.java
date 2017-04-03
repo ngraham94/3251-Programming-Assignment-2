@@ -23,7 +23,7 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Timeout used for connection related operations
      */
-    private static final int CONNECT_TIMEOUT = 10000;
+    private static final int CONNECT_TIMEOUT = 15000;
 
     /**
      * The size of the receive window in bytes.
@@ -47,6 +47,11 @@ public class ReldatSocket extends DatagramSocket {
     private int lastReceived;
 
     /**
+     * The time of the last received packet in nanoseconds.
+     */
+    private long timeOfLastReceive;
+
+    /**
      * The socket address this socket is connected to.
      */
     private SocketAddress remoteSocketAddress;
@@ -68,7 +73,7 @@ public class ReldatSocket extends DatagramSocket {
         seqNum = 0;
 
         // Set receive buffer size
-        this.setReceiveBufferSize(windowSize * MSS);
+        this.setReceiveBufferSize(windowSize * MSS * 2);
     }
 
     /**
@@ -211,6 +216,10 @@ public class ReldatSocket extends DatagramSocket {
         ByteBuffer dataBuffer = ByteBuffer.wrap(data);
         Queue<ReldatPacket> sendWindow = new ArrayBlockingQueue<>(sendWindowSize);
 
+        // Set time of last receive so connection doesn't instantly close if no
+        // data is received in first iteration
+        timeOfLastReceive = System.nanoTime();
+
         while (dataBuffer.hasRemaining() || !sendWindow.isEmpty()) {
             // Convert the next bytes to packets and populate the send window
             if (sendWindow.size() < sendWindowSize && dataBuffer.hasRemaining()) {
@@ -232,10 +241,11 @@ public class ReldatSocket extends DatagramSocket {
                 }
 
                 // Attempt to receive sendWindow.size() ACKs over the timeout period
+                int size = sendWindow.size();
                 for (int i = 0; i < sendWindow.size(); ++i) {
                     try {
                         // Get an ACK
-                        ReldatPacket ack = receivePacket(Math.max(1, TIMEOUT / sendWindow.size()));
+                        ReldatPacket ack = receivePacket(Math.max(1, TIMEOUT / size));
                         if (ack.getACK()) {
                             // Remove all acknowledged packets from the window
                             while (!sendWindow.isEmpty() &&
@@ -247,6 +257,13 @@ public class ReldatSocket extends DatagramSocket {
                     } catch (SocketTimeoutException e) {
                     }
                 }
+            }
+            // Disconnect after a while if no data is received.
+            if ((System.nanoTime() - timeOfLastReceive) / 1000000 > CONNECT_TIMEOUT) {
+                System.err.printf("No data received in %d seconds, disconnecting...\n", CONNECT_TIMEOUT / 1000);
+                this.isConnected = false;
+                super.close();
+                throw new DisconnectException();
             }
         }
     }
@@ -267,6 +284,10 @@ public class ReldatSocket extends DatagramSocket {
 
         // The receive window
         TreeSet<ReldatPacket> window = new TreeSet<>(Comparator.comparingInt(ReldatPacket::getSeqNum));
+
+        // Set time of last receive so connection doesn't instantly close if no
+        // data is received in first iteration
+        timeOfLastReceive = System.nanoTime();
 
         while (received < length) {
             // Attempt to receive up to windowSize packets
@@ -307,6 +328,14 @@ public class ReldatSocket extends DatagramSocket {
                 } else {
                     break;
                 }
+            }
+
+            // Disconnect after a while if no data is received.
+            if ((System.nanoTime() - timeOfLastReceive) / 1000000 > CONNECT_TIMEOUT) {
+                System.err.printf("No data received in %d seconds, disconnecting...\n", CONNECT_TIMEOUT / 1000);
+                this.isConnected = false;
+                super.close();
+                throw new DisconnectException();
             }
         }
 
@@ -394,6 +423,7 @@ public class ReldatSocket extends DatagramSocket {
                     throw new DisconnectException();
                 }
 
+                timeOfLastReceive = System.nanoTime();
                 return packet;
             } catch (SocketTimeoutException e) {
                 throw e;

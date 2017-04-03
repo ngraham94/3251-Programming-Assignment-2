@@ -71,6 +71,7 @@ public class Client {
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                 } catch (DisconnectException e) {
+                    System.out.println("Disconnected from server due to timeout");
                 }
 
             } else {
