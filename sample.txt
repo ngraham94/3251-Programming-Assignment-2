@@ -1,0 +1,19 @@
+Server
+======
+
+[kchen330@networklab3 pa2]$ ./reldat-server.sh 8080 3
+Window size set to 3
+Server listening on 0.0.0.0/0.0.0.0:8080
+
+Connection accepted from /130.207.107.15:39880
+
+Client
+======
+[kchen330@networklab4 pa2]$ ./reldat-client.sh networklab3.cc.gatech.edu:8080 2
+Connected to /130.207.107.14:48553
+NOTE: the connection will automatically be dropped after 20 seconds if no data is transferred
+Command: transform README.md
+Writing response to README-received.md
+Command: disconnect
+
+Connection disconnected
