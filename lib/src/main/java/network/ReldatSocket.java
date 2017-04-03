@@ -18,7 +18,7 @@ public class ReldatSocket extends DatagramSocket {
     /**
      * Timeout in ms
      */
-    private static final int TIMEOUT = 1000;
+    private static final int TIMEOUT = 2000;
 
     /**
      * Timeout used for connection related operations
